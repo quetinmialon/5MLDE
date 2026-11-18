@@ -1,0 +1,38 @@
+# Environnements et fichiers Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Résultats locaux des outils de développement
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Configuration locale et secrets
+.env
+.env.*
+!.env.example
+
+# Données, modèles et stockage des services
+/data/
+/models/
+/artifacts/
+/mlruns/
+/mlartifacts/
+/volumes/
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# Éditeurs et système d'exploitation
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
