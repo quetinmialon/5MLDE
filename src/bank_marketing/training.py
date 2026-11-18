@@ -1,6 +1,7 @@
 """Entraînement local d'un pipeline simple et comparaison à une référence naïve."""
 
 import argparse
+import hashlib
 import io
 import json
 import math
@@ -127,6 +128,7 @@ def train_model(
             "end_exclusive": start + len(partition),
             "row_count": len(partition),
             "positive_rate": float(targets[name].mean()),
+            "sha256": hashlib.sha256(partition.to_csv(index=False).encode("utf-8")).hexdigest(),
         }
         start += len(partition)
     report = {
