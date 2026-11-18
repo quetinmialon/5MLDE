@@ -22,6 +22,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # Isole le projet des outils préinstallés sur le runner (ex. pipx).
+      - name: Créer un environnement virtuel
+        shell: bash
+        run: |
+          python -m venv .venv
+          python -c "import os; print(os.path.join(os.getcwd(), '.venv', 'Scripts' if os.name == 'nt' else 'bin'))" >> "$GITHUB_PATH"
       - name: Installer les outils figés
         run: python -m pip install --no-deps -r requirements.txt
       - name: Construire et installer le paquet

@@ -79,7 +79,7 @@ modèle ne prédit aucune souscription sur cette partition. Cette limite doit
 from pathlib import Path
 import secrets
 with Path(".env").open("x", encoding="utf-8") as stream:
-    for key in ("POSTGRES_PASSWORD", "MLFLOW_DB_PASSWORD"):
+    for key in ("POSTGRES_PASSWORD", "MLFLOW_DB_PASSWORD", "PREFECT_DB_PASSWORD"):
         stream.write(f"{key}={secrets.token_hex(32)}\n")
 '@ | python -
 ```
@@ -106,6 +106,34 @@ version validée déjà utilisée. Chaque changement conserve sa raison dans un
 run d'audit. La limite de rappel constatée ci-dessus reste inchangée.
 Effectuer ces opérations une à la fois : contrôle et mutation d'alias ne sont
 pas transactionnels. `load_champion` renvoie le pipeline et sa version exacte.
+
+## Orchestration Prefect
+
+```powershell
+docker compose up -d --build --wait   # PostgreSQL, MLflow, serveur Prefect, runner planifié
+```
+
+Le service `pipeline-runner` expose le flow `bank-marketing-pipeline` avec
+`flow.serve()` (intervalle : `orchestration.interval_seconds`, 1 h par défaut).
+Suivi des exécutions, états, durées et logs dans l'[interface Prefect](http://127.0.0.1:4200).
+Exécution manuelle : `python -m bank_marketing.flows run`.
+
+Étapes : ingestion et contrôle du snapshot → préparation du rejeu → validation
+du prochain lot → entraînement et version MLflow → enregistrement de la progression.
+
+- **Rejeu** : seule la partition d'entraînement est découpée en lots de 10 000
+  lignes (simulation d'arrivée de données). Chaque exécution entraîne sur les
+  lots cumulés ; validation et test restent fixes pour comparer les versions.
+- **Retries** : seulement l'ingestion, sur erreurs réseau transitoires
+  (2 tentatives). Un lot invalide n'est jamais retenté.
+- **Échec** : le flow s'arrête avant l'entraînement, écrit une alerte dans
+  `data/replay/alerts/` et un artefact Prefect `bank-marketing-alerts`.
+  Le pipeline ne déplace jamais `champion` : la promotion reste manuelle.
+- **Doublons** : une exécution à la fois (verrou), et un lot déjà enregistré
+  dans MLflow n'est pas réentraîné.
+
+Limites : l'alerte est locale (fichier + artefact), sans envoi d'e-mail ; l'image
+ne contient pas Git, le code est donc identifié par son empreinte `code_sha256`.
 
 ## Organisation actuelle
 

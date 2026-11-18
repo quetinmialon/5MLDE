@@ -9,6 +9,7 @@ dist/
 
 # Résultats locaux des outils de développement
 .pytest_cache/
+.prefect/
 .ruff_cache/
 .coverage
 .coverage.*

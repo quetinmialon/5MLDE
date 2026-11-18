@@ -59,12 +59,51 @@ def split_dataset(
         "validation": frame.iloc[train_end:validation_end].copy(),
         "test": frame.iloc[validation_end:].copy(),
     }
+    check_partitions(partitions)
+    return partitions
+
+
+def check_partitions(partitions: dict[str, pd.DataFrame]) -> None:
     for name, partition in partitions.items():
         if partition.empty:
             raise ValueError(f"Partition {name} vide : jeu de données trop petit.")
         if set(partition["y"]) != {"no", "yes"}:
             raise ValueError(f"La partition {name} doit contenir les deux classes no et yes.")
-    return partitions
+
+
+def load_partitions(
+    config: dict, csv_path: str | Path | None = None,
+    validation_csv: str | Path | None = None, test_csv: str | Path | None = None,
+    *, report_path: str | Path | None = None,
+) -> tuple[dict[str, pd.DataFrame], dict]:
+    """Utiliser des références fixes pour le rejeu, ou la découpe initiale."""
+    if (validation_csv is None) != (test_csv is None):
+        raise ValueError("Validation et test fixes doivent être fournis ensemble.")
+    source = Path(csv_path) if csv_path is not None else config["data"]["raw_dir"] / "bank-full.csv"
+    if validation_csv is not None:
+        paths = {"train": source, "validation": Path(validation_csv), "test": Path(test_csv)}
+        if len({path.resolve() for path in paths.values()}) != 3:
+            raise ValueError("Les trois fichiers de partitions doivent être distincts.")
+        partitions, qualities = {}, {}
+        for name, path in paths.items():
+            partitions[name], qualities[name] = load_training_data(
+                path, min_rows=config["validation"]["min_rows"],
+                report_path=report_path if name == "train" else None,
+            )
+        check_partitions(partitions)
+        quality = qualities["train"]
+        quality["partition_sources"] = {
+            name: {key: item[key] for key in ("source", "sha256", "row_count")}
+            for name, item in qualities.items()
+        }
+        return partitions, quality
+    frame, quality = load_training_data(
+        source, min_rows=config["validation"]["min_rows"], report_path=report_path,
+    )
+    return split_dataset(
+        frame, train_fraction=config["training"]["train_fraction"],
+        validation_fraction=config["training"]["validation_fraction"],
+    ), quality
 
 
 def build_pipeline(
@@ -83,18 +122,15 @@ def train_model(
     *,
     csv_path: str | Path | None = None,
     evaluate_test: bool = False,
+    validation_csv: str | Path | None = None,
+    test_csv: str | Path | None = None,
 ) -> Path:
     """Ajuster sur train seulement, puis conserver modèle, partitions et métriques."""
     config = load_training_config(config_path)
     settings = config["training"]
-    csv_path = Path(csv_path) if csv_path is not None else config["data"]["raw_dir"] / "bank-full.csv"
-    frame, quality = load_training_data(
-        csv_path, min_rows=config["validation"]["min_rows"],
+    partitions, quality = load_partitions(
+        config, csv_path, validation_csv, test_csv,
         report_path=config["data"]["report_dir"] / "training-validation.json",
-    )
-    partitions = split_dataset(
-        frame, train_fraction=settings["train_fraction"],
-        validation_fraction=settings["validation_fraction"],
     )
     features = {name: part.loc[:, FEATURE_COLUMNS] for name, part in partitions.items()}
     targets = {name: part["y"].map({"no": 0, "yes": 1}).astype(int) for name, part in partitions.items()}
@@ -123,17 +159,21 @@ def train_model(
     split_summary = {}
     start = 0
     for name, partition in partitions.items():
+        if validation_csv is not None:
+            start = 0
         split_summary[name] = {
             "start_inclusive": start,
             "end_exclusive": start + len(partition),
             "row_count": len(partition),
             "positive_rate": float(targets[name].mean()),
-            "sha256": hashlib.sha256(partition.to_csv(index=False).encode("utf-8")).hexdigest(),
+            # Format canonique identique sous Windows/Linux, compatible avec les premiers runs.
+            "sha256": hashlib.sha256(partition.to_csv(index=False, lineterminator="\r\n").encode("utf-8")).hexdigest(),
         }
         start += len(partition)
     report = {
         "created_at": created_at.isoformat(),
         "dataset": quality,
+        "split_mode": "fixed_holdouts" if validation_csv is not None else "sequential",
         "splits": split_summary,
         "feature_columns": FEATURE_COLUMNS,
         "excluded_columns": ["duration", "y"],

@@ -1,6 +1,7 @@
 """Suivi explicite des entraînements et des candidats dans MLflow."""
 
 import argparse
+import hashlib
 import json
 import math
 import subprocess
@@ -19,7 +20,7 @@ from sklearn.exceptions import ConvergenceWarning
 
 from bank_marketing.preprocessing import FEATURE_COLUMNS
 from bank_marketing.settings import load_tracking_config
-from bank_marketing.training import load_training_data, split_dataset, train_model
+from bank_marketing.training import load_partitions, train_model
 from bank_marketing.validation import DataValidationError
 
 
@@ -58,9 +59,12 @@ def log_code_and_environment(config_path: Path) -> None:
     except FileNotFoundError:
         mlflow.set_tags({"code_commit": "unavailable", "code_dirty": "unknown"})
     package_dir = Path(__file__).resolve().parent
+    code_digest = hashlib.sha256()
     for path in sorted(package_dir.rglob("*.py")):
+        code_digest.update(path.relative_to(package_dir).as_posix().encode("utf-8") + b"\0" + path.read_bytes())
         artifact_path = (Path("source/bank_marketing") / path.parent.relative_to(package_dir)).as_posix()
         mlflow.log_artifact(str(path), artifact_path=artifact_path)
+    mlflow.set_tag("code_sha256", code_digest.hexdigest())
     for path in (root / "pyproject.toml", root / "requirements.txt", config_path):
         if path.is_file():
             mlflow.log_artifact(str(path), artifact_path="configuration")
@@ -75,6 +79,10 @@ def track_training(
     *,
     csv_path: str | Path | None = None,
     evaluate_test: bool = False,
+    validation_csv: str | Path | None = None,
+    test_csv: str | Path | None = None,
+    batch_id: str | None = None,
+    flow_run_id: str | None = None,
 ) -> dict:
     """Entraîner dans un run MLflow ; enregistrer un candidat sans le promouvoir."""
     config_path = Path(config_path).resolve()
@@ -83,18 +91,25 @@ def track_training(
     settings = config["mlflow"]
     with mlflow.start_run(experiment_id=experiment_id, run_name="training", tags={"operation": "training"}) as run:
         try:
+            if batch_id is not None:
+                mlflow.set_tag("batch_id", batch_id)
+            if flow_run_id is not None:
+                mlflow.set_tag("prefect_flow_run_id", flow_run_id)
             log_code_and_environment(config_path)
-            run_dir = train_model(config_path, csv_path=csv_path, evaluate_test=evaluate_test)
+            run_dir = train_model(
+                config_path, csv_path=csv_path, evaluate_test=evaluate_test,
+                validation_csv=validation_csv, test_csv=test_csv,
+            )
             report = json.loads((run_dir / "metrics.json").read_text(encoding="utf-8"))
             pipeline = joblib.load(run_dir / "pipeline.joblib")
             source = Path(csv_path) if csv_path is not None else config["data"]["raw_dir"] / "bank-full.csv"
-            frame, quality = load_training_data(source)
+            partitions, quality = load_partitions(config, csv_path, validation_csv, test_csv)
             if quality["sha256"] != report["dataset"]["sha256"]:
                 raise ValueError("Les données ont changé depuis l'entraînement ; suivi refusé.")
-            partitions = split_dataset(
-                frame, train_fraction=report["parameters"]["train_fraction"],
-                validation_fraction=report["parameters"]["validation_fraction"],
-            )
+            for name, partition in partitions.items():
+                digest = hashlib.sha256(partition.to_csv(index=False, lineterminator="\r\n").encode("utf-8")).hexdigest()
+                if digest != report["splits"][name]["sha256"]:
+                    raise ValueError(f"La partition {name} a changé depuis l'entraînement.")
             validation_digest = report["splits"]["validation"]["sha256"]
             mlflow.set_tags({
                 "dataset_sha256": quality["sha256"],
@@ -115,7 +130,10 @@ def track_training(
                     })
             for name in (["train", "validation"] + (["test"] if evaluate_test else [])):
                 dataset = mlflow.data.from_pandas(
-                    partitions[name], source=str(source.resolve()),
+                    partitions[name], source=(
+                        quality["partition_sources"][name]["source"]
+                        if "partition_sources" in quality else str(source.resolve())
+                    ),
                     # MLflow limite ce champ à 36 caractères ; le SHA-256 complet reste dans le rapport.
                     digest=report["splits"][name]["sha256"][:32], name=f"bank-marketing-{name}", targets="y",
                 )

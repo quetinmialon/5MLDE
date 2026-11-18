@@ -86,3 +86,26 @@ def load_tracking_config(config_path: str | Path = "config/project.toml") -> dic
     if type(gain) not in (int, float) or not math.isfinite(gain) or not 0 <= gain <= 1:
         raise ValueError("registry.min_average_precision_gain doit être entre 0 et 1.")
     return config
+
+
+def load_orchestration_config(config_path: str | Path = "config/project.toml") -> dict:
+    config = load_training_config(config_path)
+    settings = config.get("orchestration")
+    if not isinstance(settings, dict):
+        raise ValueError("Section [orchestration] requise.")
+    for key in ("batch_size", "interval_seconds"):
+        if type(settings.get(key)) is not int or settings[key] < 1:
+            raise ValueError(f"orchestration.{key} doit être un entier positif.")
+    for key in ("ingestion_retries", "retry_delay_seconds"):
+        if type(settings.get(key)) is not int or settings[key] < 0:
+            raise ValueError(f"orchestration.{key} doit être un entier positif ou nul.")
+    if not isinstance(settings.get("replay_dir"), str) or not settings["replay_dir"].strip():
+        raise ValueError("orchestration.replay_dir doit être un chemin non vide.")
+    settings["replay_dir"] = (Path(config_path).resolve().parent / settings["replay_dir"]).resolve()
+    settings["api_url"] = os.environ.get("PREFECT_API_URL", settings.get("api_url"))
+    if not isinstance(settings["api_url"], str):
+        raise ValueError("orchestration.api_url doit être une URL HTTP(S).")
+    uri = urlparse(settings["api_url"])
+    if uri.scheme not in {"http", "https"} or not uri.netloc or uri.username or uri.password:
+        raise ValueError("orchestration.api_url doit être une URL HTTP(S) sans identifiants.")
+    return config

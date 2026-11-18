@@ -13,8 +13,8 @@ RUN python -m pip install --no-build-isolation --no-deps .
 RUN python -m pip check
 
 RUN useradd --create-home --uid 10001 appuser \
-    && mkdir -p /mlflow/artifacts \
-    && chown -R appuser:appuser /mlflow
+    && mkdir -p /mlflow/artifacts /app/data /app/models \
+    && chown -R appuser:appuser /mlflow /app/data /app/models
 USER appuser
 
 CMD ["mlflow", "server"]
