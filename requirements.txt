@@ -1,0 +1,4 @@
+# Outils nécessaires au socle ; aucune dépendance métier à ce stade.
+# Garder setuptools cohérent avec [build-system] dans pyproject.toml.
+pip==26.3
+setuptools==84.2.1

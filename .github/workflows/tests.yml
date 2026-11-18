@@ -1,0 +1,32 @@
+name: Vérifications Python
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installation:
+    name: Installation — ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Installer les outils figés
+        run: python -m pip install --no-deps -r requirements.txt
+      - name: Construire et installer le paquet
+        run: python -m pip install --no-build-isolation --no-deps .
+      - name: Vérifier les dépendances
+        run: python -m pip check
+      - name: Vérifier le paquet installé
+        run: python -I -c "import bank_marketing; from importlib.metadata import version; print(version('bank-marketing')); print(bank_marketing.__file__)"
