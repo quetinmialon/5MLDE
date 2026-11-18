@@ -1,4 +1,4 @@
-# Outils de construction et de test ; traitements basés sur la bibliothèque standard.
+# Outils, bibliothèques métier et dépendances transitives figés.
 # Garder setuptools cohérent avec [build-system] dans pyproject.toml.
 pip==26.3
 setuptools==84.2.1
@@ -8,3 +8,13 @@ iniconfig==2.3.1
 packaging==26.3
 pluggy==1.7.0
 pygments==2.21.0
+scikit-learn==1.9.1
+pandas==3.1.1
+numpy==2.5.5
+joblib==1.6.0
+scipy==1.18.1
+narwhals==2.29.0
+threadpoolctl==3.8.0
+python-dateutil==4.0.0
+tzdata==2026.6
+cloudpickle==3.1.3

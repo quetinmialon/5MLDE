@@ -1,5 +1,6 @@
-"""Lecture de la configuration de l'ingestion."""
+"""Lecture des paramètres d'ingestion et d'entraînement."""
 
+import math
 import re
 import tomllib
 from pathlib import Path
@@ -32,4 +33,31 @@ def load_config(config_path: str | Path = "config/project.toml") -> dict:
         raise ValueError("validation.min_rows doit être un entier strictement positif.")
     for key in ("raw_dir", "report_dir"):
         data[key] = (config_path.parent / data[key]).resolve()
+    return config
+
+
+def load_training_config(config_path: str | Path = "config/project.toml") -> dict:
+    """Valider les paramètres du modèle sans les imposer à l'ingestion."""
+    config = load_config(config_path)
+    training = config.get("training")
+    if not isinstance(training, dict):
+        raise ValueError("Section [training] absente ou invalide.")
+    for key in ("train_fraction", "validation_fraction", "regularization_c", "threshold"):
+        value = training.get(key)
+        if type(value) not in (int, float) or not math.isfinite(value):
+            raise ValueError(f"training.{key} doit être un nombre fini.")
+    for key in ("train_fraction", "validation_fraction"):
+        if not 0 < training[key] < 1:
+            raise ValueError(f"training.{key} doit être entre 0 et 1, bornes exclues.")
+    if training["train_fraction"] + training["validation_fraction"] >= 1:
+        raise ValueError("Les fractions doivent laisser une partition de test non vide.")
+    if training["regularization_c"] <= 0 or not 0 <= training["threshold"] <= 1:
+        raise ValueError("C doit être positif et le seuil compris entre 0 et 1.")
+    if type(training.get("max_iter")) is not int or training["max_iter"] < 1:
+        raise ValueError("training.max_iter doit être un entier strictement positif.")
+    if type(training.get("random_state")) is not int or not 0 <= training["random_state"] < 2**32:
+        raise ValueError("training.random_state doit être un entier entre 0 et 2**32 - 1.")
+    if not isinstance(training.get("output_dir"), str) or not training["output_dir"].strip():
+        raise ValueError("training.output_dir doit être une chaîne non vide.")
+    training["output_dir"] = (Path(config_path).resolve().parent / training["output_dir"]).resolve()
     return config

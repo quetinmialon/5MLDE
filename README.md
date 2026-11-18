@@ -7,11 +7,6 @@ L'objectif est de démontrer une chaîne reproductible, traçable et exploitable
 de l'ingestion à la supervision. La complexité du modèle et la recherche du
 meilleur score ne sont pas les objectifs du projet.
 
-## État du projet
-
-Le paquet Python, l'ingestion reproductible et les contrôles de qualité sont
-disponibles. Le modèle et les services MLOps seront ajoutés progressivement.
-
 ## Prérequis
 
 - Python **3.12**, avec `venv` et `pip`.
@@ -46,43 +41,35 @@ après avoir vérifié que `python --version` indique bien Python 3.12.
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-La CI reprend ces contrôles sous Windows et Linux. Les tests utilisent des
-données synthétiques et ne dépendent pas du réseau ni d'un dataset téléchargé.
 
-## Données
-
-Source : [UCI Bank Marketing](https://archive.ics.uci.edu/dataset/222/bank%2Bmarketing),
-licence CC BY 4.0. Attribution : Moro, S., Rita, P., & Cortez, P. (2014),
-*Bank Marketing*, DOI : 10.24432/C5K306.
-
-Depuis la racine du dépôt, télécharger et valider `bank-full.csv` :
+## Modèle simple
 
 ```powershell
-.\.venv\Scripts\python.exe -m bank_marketing.ingestion
+.\.venv\Scripts\python.exe -m bank_marketing.training
 ```
 
-Pour utiliser l'archive fournie à côté du dépôt, ajouter
-`--archive ../bank+marketing.zip`. Les paramètres et empreintes SHA-256 sont dans
-`config/project.toml` ; ses chemins sont relatifs à ce fichier. L'ingestion
-vérifie l'archive, le CSV et sa qualité avant de remplacer les données locales.
-Elle génère `data/raw/bank-full.csv`, `data/raw/manifest.json` et un rapport
-identifié par l'empreinte du CSV dans `data/reports/`. Le dossier `data/` est ignoré.
+Le pipeline combine standardisation, encodage des catégories et régression
+logistique. Il est ajusté uniquement sur les 70 % premières lignes ; les 15 %
+suivantes servent à la validation et les 15 % restantes au test, sans mélange.
+Cette découpe suit l'ordre chronologique annoncé par UCI, sans dates complètes
+ni identifiant client. `duration` et `y` sont exclus des 15 variables d'entrée.
 
-Pour valider un autre lot au même format :
+Chaque exécution crée `models/<exécution>/pipeline.joblib` et `metrics.json`,
+ignorés par Git : paramètres, empreinte des données, partitions, versions et
+comparaison à `DummyClassifier(strategy="prior")`. Le seuil est fixé à 0,5
+dans la configuration. Le test est évalué uniquement avec `--evaluate-test`,
+à réserver au bilan final ; les comparaisons courantes utilisent la validation.
 
-```powershell
-.\.venv\Scripts\python.exe -m bank_marketing.validation chemin/lot.csv --report data/reports/lot.json
-```
+Les métriques incluent précision, rappel, F1, ROC-AUC, average precision et
+matrice de confusion. La non-convergence bloque la sauvegarde. Le modèle reste
+volontairement simple : pas d'optimisation ni de calibration des probabilités,
+et `pdays = -1` est conservé numériquement. Recharger uniquement des fichiers
+Joblib de confiance, avec les versions de bibliothèques enregistrées.
 
-Le contrat vérifie les 17 colonnes, les catégories, les entiers finis, les
-domaines et l'absence de cellules vides. Les soldes négatifs, `pdays = -1` et les
-catégories `unknown` documentées sont acceptés. Les doublons sont signalés sans
-suppression. Un lot non conforme produit une exception et un code de sortie 1 ;
-le rapport conserve les erreurs. Une classe unique est autorisée dans un lot ;
-l'exploitabilité du jeu d'entraînement sera vérifiée à l'étape du modèle.
-
-Les statistiques de qualité sont descriptives, sans détection de dérive à ce
-stade. `duration` reste dans le CSV brut et sera exclue des entrées du modèle.
+Mesure initiale du 18/11/2026 sur la validation : ROC-AUC 0,674 et average
+precision 0,264 (référence : 0,115). Au seuil de 0,5, le rappel est nul : le
+modèle ne prédit aucune souscription sur cette partition. Cette limite doit
+être conservée dans l'interprétation des résultats.
 
 ## Organisation actuelle
 
@@ -96,6 +83,6 @@ stade. `duration` reste dans le CSV brut et sera exclue des entrées du modèle.
 ├── pyproject.toml
 ├── requirements.txt
 ├── README.md
-├── src/bank_marketing/             # Configuration, ingestion et validation
+├── src/bank_marketing/             # Données, prétraitement, modèle et métriques
 └── tests/                         # Tests unitaires et commandes en intégration
 ```
