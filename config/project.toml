@@ -25,3 +25,11 @@ model_name = "bank-marketing-logistic-regression"
 
 [registry]
 min_average_precision_gain = 0.0
+
+[orchestration]
+api_url = "http://127.0.0.1:4200/api"
+replay_dir = "../data/replay"
+batch_size = 10000
+interval_seconds = 3600
+ingestion_retries = 2
+retry_delay_seconds = 3

@@ -121,3 +121,29 @@ def tracking_setup(training_setup, tmp_path, monkeypatch):
     mlflow.end_run()
     mlflow.set_tracking_uri(previous_tracking_uri)
     mlflow.set_registry_uri(previous_registry_uri)
+
+
+@pytest.fixture
+def replay_setup(tracking_setup):
+    config, csv_path, rows, client, experiment_id = tracking_setup
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        + '\n[orchestration]\napi_url = "http://127.0.0.1:4200/api"\n'
+        'replay_dir = "replay"\nbatch_size = 10\ninterval_seconds = 3600\n'
+        'ingestion_retries = 2\nretry_delay_seconds = 0\n',
+        encoding="utf-8",
+    )
+    return config, csv_path, rows, client, experiment_id
+
+
+@pytest.fixture(scope="session")
+def prefect_backend(tmp_path_factory):
+    from prefect.testing.utilities import prefect_test_harness
+    from prefect.settings import PREFECT_HOME, PREFECT_SERVER_ANALYTICS_ENABLED, temporary_settings
+
+    with temporary_settings(updates={
+        PREFECT_HOME: tmp_path_factory.mktemp("prefect-home"),
+        PREFECT_SERVER_ANALYTICS_ENABLED: False,
+    }):
+        with prefect_test_harness(server_startup_timeout=90):
+            yield
