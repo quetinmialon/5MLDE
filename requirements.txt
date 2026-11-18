@@ -1,4 +1,10 @@
-# Outils nécessaires au socle ; aucune dépendance métier à ce stade.
+# Outils de construction et de test ; traitements basés sur la bibliothèque standard.
 # Garder setuptools cohérent avec [build-system] dans pyproject.toml.
 pip==26.3
 setuptools==84.2.1
+pytest==9.2.0
+colorama==0.4.6; sys_platform == "win32"
+iniconfig==2.3.1
+packaging==26.3
+pluggy==1.7.0
+pygments==2.21.0

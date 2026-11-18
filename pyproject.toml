@@ -14,3 +14,7 @@ dependencies = []
 where = ["src"]
 include = ["bank_marketing*"]
 namespaces = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"
