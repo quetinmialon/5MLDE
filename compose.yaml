@@ -1,0 +1,54 @@
+name: bank-marketing
+
+services:
+  postgres:
+    image: postgres:17.12-bookworm
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Renseigner POSTGRES_PASSWORD dans .env}
+      MLFLOW_DB_PASSWORD: ${MLFLOW_DB_PASSWORD:?Renseigner MLFLOW_DB_PASSWORD dans .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init-mlflow.sh:/docker-entrypoint-initdb.d/init-mlflow.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mlflow:
+    build: .
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql+psycopg2://mlflow:${MLFLOW_DB_PASSWORD:?Renseigner MLFLOW_DB_PASSWORD dans .env}@postgres:5432/mlflow
+      MLFLOW_ENABLE_TELEMETRY: "false"
+    command:
+      - mlflow
+      - server
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "5000"
+      - --workers
+      - "1"
+      - --artifacts-destination
+      - /mlflow/artifacts
+      - --allowed-hosts
+      - "localhost:*,127.0.0.1:*,mlflow:*"
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+volumes:
+  postgres_data:
+  mlflow_artifacts:

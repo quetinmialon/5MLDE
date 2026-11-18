@@ -13,9 +13,8 @@ meilleur score ne sont pas les objectifs du projet.
 - Git pour récupérer le dépôt.
 - Accès à PyPI pour l'installation et à UCI pour télécharger les données.
 
-La version mineure 3.12 est la cible actuelle. Les autres versions de Python ne
-sont pas prises en charge à ce stade. Docker Compose sera nécessaire lorsque
-les services seront introduits ; il n'est pas utilisé pour le socle actuel.
+La version mineure 3.12 est la cible actuelle. Docker Desktop et Docker Compose
+sont nécessaires pour PostgreSQL et MLflow.
 
 ## Installation locale
 
@@ -71,6 +70,43 @@ precision 0,264 (référence : 0,115). Au seuil de 0,5, le rappel est nul : le
 modèle ne prédit aucune souscription sur cette partition. Cette limite doit
 être conservée dans l'interprétation des résultats.
 
+## MLflow et versions
+
+À la première installation, lorsque `.env` n'existe pas, générer les secrets :
+
+```powershell
+@'
+from pathlib import Path
+import secrets
+with Path(".env").open("x", encoding="utf-8") as stream:
+    for key in ("POSTGRES_PASSWORD", "MLFLOW_DB_PASSWORD"):
+        stream.write(f"{key}={secrets.token_hex(32)}\n")
+'@ | python -
+```
+
+```powershell
+docker compose up -d --build --wait
+.\.venv\Scripts\python.exe -m bank_marketing.tracking
+.\.venv\Scripts\python.exe -m bank_marketing.registry promote 1 --reason "Premier candidat valide"
+# Après la promotion d'une autre version :
+.\.venv\Scripts\python.exe -m bank_marketing.registry rollback 1 --reason "Retour à la version précédente"
+```
+
+Préparer les données avec `python -m bank_marketing.ingestion` avant le premier
+entraînement et adapter les numéros aux versions affichées. L'interface
+[MLflow](http://127.0.0.1:5000) conserve empreintes des données, code, dépendances,
+paramètres, métriques et artefacts ; les échecs restent visibles. PostgreSQL et
+les artefacts disposent de volumes persistants. `.env` reste hors de Git,
+de l'image et des artefacts ; le rôle MLflow n'est pas superutilisateur.
+
+L'entraînement crée un candidat sans déplacer `champion`. La promotion exige
+des contrôles réussis et une average precision de validation au moins égale
+au naïf, puis au champion sur la même validation. Le retour arrière cible une
+version validée déjà utilisée. Chaque changement conserve sa raison dans un
+run d'audit. La limite de rappel constatée ci-dessus reste inchangée.
+Effectuer ces opérations une à la fois : contrôle et mutation d'alias ne sont
+pas transactionnels. `load_champion` renvoie le pipeline et sa version exacte.
+
 ## Organisation actuelle
 
 ```text
@@ -80,6 +116,9 @@ modèle ne prédit aucune souscription sur cette partition. Cette limite doit
 ├── .gitattributes
 ├── .gitignore
 ├── config/project.toml
+├── compose.yaml
+├── Dockerfile
+├── infra/postgres/
 ├── pyproject.toml
 ├── requirements.txt
 ├── README.md

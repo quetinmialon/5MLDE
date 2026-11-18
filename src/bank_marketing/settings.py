@@ -1,6 +1,7 @@
 """Lecture des paramètres d'ingestion et d'entraînement."""
 
 import math
+import os
 import re
 import tomllib
 from pathlib import Path
@@ -60,4 +61,28 @@ def load_training_config(config_path: str | Path = "config/project.toml") -> dic
     if not isinstance(training.get("output_dir"), str) or not training["output_dir"].strip():
         raise ValueError("training.output_dir doit être une chaîne non vide.")
     training["output_dir"] = (Path(config_path).resolve().parent / training["output_dir"]).resolve()
+    return config
+
+
+def load_tracking_config(config_path: str | Path = "config/project.toml") -> dict:
+    """Paramètres MLflow ; l'URI peut être fournie par l'environnement."""
+    config = load_config(config_path)
+    tracking = config.get("mlflow")
+    registry = config.get("registry")
+    if not isinstance(tracking, dict) or not isinstance(registry, dict):
+        raise ValueError("Sections [mlflow] et [registry] requises.")
+    tracking["tracking_uri"] = os.environ.get("MLFLOW_TRACKING_URI", tracking.get("tracking_uri"))
+    for key in ("tracking_uri", "experiment_name", "model_name"):
+        if not isinstance(tracking.get(key), str) or not tracking[key].strip():
+            raise ValueError(f"mlflow.{key} doit être une chaîne non vide.")
+    uri = urlparse(tracking["tracking_uri"])
+    if uri.username or uri.password:
+        raise ValueError("Ne pas inclure d'identifiants dans l'URI de suivi MLflow.")
+    if not ((uri.scheme in {"http", "https"} and uri.netloc) or uri.scheme == "sqlite"):
+        raise ValueError("URI MLflow HTTP(S) requise, ou SQLite pour les tests locaux.")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", tracking["model_name"]):
+        raise ValueError("Nom de modèle invalide : lettres, chiffres, points, tirets et underscores uniquement.")
+    gain = registry.get("min_average_precision_gain")
+    if type(gain) not in (int, float) or not math.isfinite(gain) or not 0 <= gain <= 1:
+        raise ValueError("registry.min_average_precision_gain doit être entre 0 et 1.")
     return config

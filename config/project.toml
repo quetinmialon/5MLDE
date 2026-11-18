@@ -17,3 +17,11 @@ max_iter = 1000
 random_state = 42
 threshold = 0.5
 output_dir = "../models"
+
+[mlflow]
+tracking_uri = "http://127.0.0.1:5000"
+experiment_name = "bank-marketing"
+model_name = "bank-marketing-logistic-regression"
+
+[registry]
+min_average_precision_gain = 0.0

@@ -90,3 +90,34 @@ def training_setup(tmp_path, valid_rows, make_csv, make_config):
     csv_path.parent.mkdir()
     csv_path.write_bytes(content)
     return config_path, csv_path, rows
+
+
+@pytest.fixture
+def tracking_setup(training_setup, tmp_path, monkeypatch):
+    import mlflow
+    from mlflow import MlflowClient
+
+    config_path, csv_path, rows = training_setup
+    uri = f"sqlite:///{(tmp_path / 'mlflow.db').as_posix()}"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        + f'\n[mlflow]\ntracking_uri = "{uri}"\n'
+        'experiment_name = "bank-marketing-tests"\nmodel_name = "bank-marketing-test"\n'
+        '[registry]\nmin_average_precision_gain = 0.0\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", uri)
+    monkeypatch.setenv("MLFLOW_ENABLE_TELEMETRY", "false")
+    monkeypatch.chdir(tmp_path)
+    previous_tracking_uri = mlflow.get_tracking_uri()
+    previous_registry_uri = mlflow.get_registry_uri()
+    mlflow.set_tracking_uri(uri)
+    mlflow.set_registry_uri(uri)
+    client = MlflowClient(tracking_uri=uri, registry_uri=uri)
+    experiment_id = client.create_experiment(
+        "bank-marketing-tests", artifact_location=(tmp_path / "artifacts").as_uri(),
+    )
+    yield config_path, csv_path, rows, client, experiment_id
+    mlflow.end_run()
+    mlflow.set_tracking_uri(previous_tracking_uri)
+    mlflow.set_registry_uri(previous_registry_uri)
