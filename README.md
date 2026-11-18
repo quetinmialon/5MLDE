@@ -79,7 +79,7 @@ modèle ne prédit aucune souscription sur cette partition. Cette limite doit
 from pathlib import Path
 import secrets
 with Path(".env").open("x", encoding="utf-8") as stream:
-    for key in ("POSTGRES_PASSWORD", "MLFLOW_DB_PASSWORD", "PREFECT_DB_PASSWORD"):
+    for key in ("POSTGRES_PASSWORD", "MLFLOW_DB_PASSWORD", "PREFECT_DB_PASSWORD", "APP_DB_PASSWORD"):
         stream.write(f"{key}={secrets.token_hex(32)}\n")
 '@ | python -
 ```
@@ -135,6 +135,33 @@ du prochain lot → entraînement et version MLflow → enregistrement de la pro
 Limites : l'alerte est locale (fichier + artefact), sans envoi d'e-mail ; l'image
 ne contient pas Git, le code est donc identifié par son empreinte `code_sha256`.
 
+## API de prédiction
+
+Service `api` (FastAPI) sur http://127.0.0.1:8000, documentation interactive
+sur `/docs`. Si le port est pris : `$env:API_PORT=8001; docker compose up -d api`.
+
+| Route | Rôle |
+|---|---|
+| `POST /predict` | probabilité, classe (seuil 0,5), `prediction_id` et version exacte du modèle |
+| `POST /feedback` | vraie réponse (`yes`/`no`) liée à un `prediction_id` |
+| `POST /model/refresh` | recharge le champion après promotion ou retour arrière |
+| `GET /health`, `GET /ready` | processus vivant ; modèle chargé et base joignable |
+
+- Le champion est chargé une fois en mémoire au démarrage. Déplacer l'alias ne
+  change rien tant que `/model/refresh` n'est pas appelé ; un échec de
+  rechargement conserve la version en cours.
+- Entrées strictes : les 15 variables du modèle, catégories et bornes du contrat
+  de données, entiers JSON uniquement ; `duration` et `y` sont refusés (422).
+- PostgreSQL (base `bank_marketing`, compte `app`) conserve les prédictions
+  (entrées, version, probabilité, durée), les feedbacks et les erreurs des
+  routes. Un feedback sur une prédiction inconnue renvoie 404, un doublon 409.
+- Base indisponible : `/predict` renvoie 503 sans résultat, car une prédiction
+  non tracée n'est pas servie ; `/ready` passe en `not_ready`.
+
+Limites : pas d'authentification (service exposé uniquement en local), une
+connexion PostgreSQL par requête, et les erreurs survenues pendant une panne
+de la base ne sont visibles que dans les journaux.
+
 ## Organisation actuelle
 
 ```text
@@ -150,6 +177,7 @@ ne contient pas Git, le code est donc identifié par son empreinte `code_sha256`
 ├── pyproject.toml
 ├── requirements.txt
 ├── README.md
-├── src/bank_marketing/             # Données, prétraitement, modèle et métriques
+├── src/bank_marketing/             # Données, modèle, suivi, orchestration
+│   └── api/                       # API FastAPI
 └── tests/                         # Tests unitaires et commandes en intégration
 ```
