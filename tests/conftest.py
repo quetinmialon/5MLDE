@@ -63,3 +63,30 @@ def make_config(tmp_path):
         )
         return config_path
     return build
+
+
+@pytest.fixture
+def training_setup(tmp_path, valid_rows, make_csv, make_config):
+    rows = [
+        {
+            **valid_rows[index % 2], "age": str(25 + index),
+            "balance": str(index * 100 - 500), "day": str(index % 28 + 1),
+            "duration": str(100 + index),
+        }
+        for index in range(40)
+    ]
+    for row in rows[34:]:
+        row["job"] = "retired"
+    content = make_csv(rows)
+    config_path = make_config(b"archive", content)
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        + '\n[training]\ntrain_fraction = 0.70\nvalidation_fraction = 0.15\n'
+        'regularization_c = 1.0\nmax_iter = 1000\nrandom_state = 42\n'
+        'threshold = 0.5\noutput_dir = "models"\n',
+        encoding="utf-8",
+    )
+    csv_path = tmp_path / "raw" / "bank-full.csv"
+    csv_path.parent.mkdir()
+    csv_path.write_bytes(content)
+    return config_path, csv_path, rows

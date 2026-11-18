@@ -8,7 +8,12 @@ version = "0.1.0"
 description = "Chaîne MLOps pour le dataset UCI Bank Marketing"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "scikit-learn==1.9.1",
+    "pandas==3.1.1",
+    "numpy==2.5.5",
+    "joblib==1.6.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
