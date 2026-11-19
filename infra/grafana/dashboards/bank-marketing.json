@@ -1,0 +1,568 @@
+{
+  "uid": "bank-marketing",
+  "title": "Bank Marketing — supervision",
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "10s",
+  "tags": [
+    "mlops"
+  ],
+  "timezone": "browser",
+  "editable": false,
+  "panels": [
+    {
+      "type": "row",
+      "title": "Service — Prometheus",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 1
+    },
+    {
+      "type": "stat",
+      "title": "API disponible",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "up{job=\"api\"}",
+          "legendFormat": ""
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {},
+      "description": "1 = Prometheus joint l'API.",
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "Version servie",
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "api_model_version",
+          "legendFormat": ""
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "description": "Version MLflow du champion en mémoire (0 = aucun modèle).",
+      "id": 3
+    },
+    {
+      "type": "timeseries",
+      "title": "Débit par route",
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (route) (rate(api_requests_total[1m]))",
+          "legendFormat": "{{route}}"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "id": 4
+    },
+    {
+      "type": "timeseries",
+      "title": "Taux de réponses 5xx",
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum(rate(api_requests_total{status=~\"5..\"}[1m])) or vector(0)) / sum(rate(api_requests_total[1m]))",
+          "legendFormat": "5xx"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "id": 5
+    },
+    {
+      "type": "stat",
+      "title": "Requêtes en erreur (4xx/5xx, période)",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(api_requests_total{status=~\"[45]..\"}[$__range]))",
+          "legendFormat": ""
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "id": 6
+    },
+    {
+      "type": "timeseries",
+      "title": "Latence /predict",
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(api_request_duration_seconds_bucket{route=\"/predict\"}[1m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(api_request_duration_seconds_bucket{route=\"/predict\"}[1m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(api_request_duration_seconds_bucket{route=\"/predict\"}[1m])))",
+          "legendFormat": "p99"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "description": "Quantiles estimés à partir des buckets de l'histogramme.",
+      "id": 7
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU de l'API",
+      "gridPos": {
+        "x": 8,
+        "y": 9,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(process_cpu_seconds_total{job=\"api\"}[1m])",
+          "legendFormat": "cœurs"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "description": "Secondes CPU consommées par seconde (1 = un cœur).",
+      "id": 8
+    },
+    {
+      "type": "timeseries",
+      "title": "Mémoire de l'API",
+      "gridPos": {
+        "x": 16,
+        "y": 9,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "process_resident_memory_bytes{job=\"api\"}",
+          "legendFormat": "RSS"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "id": 9
+    },
+    {
+      "type": "row",
+      "title": "Modèle et usage — PostgreSQL",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 10
+    },
+    {
+      "type": "timeseries",
+      "title": "Prédictions par version",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, '1m'), model_version AS metric, count(*) AS value\nFROM predictions WHERE $__timeFilter(created_at)\nGROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "id": 11
+    },
+    {
+      "type": "barchart",
+      "title": "Distribution des probabilités prédites",
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT to_char(floor(probability * 10) / 10, 'FM0.0') AS tranche, count(*) AS predictions\nFROM predictions WHERE $__timeFilter(created_at)\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "description": "Tranches de 0,1. Le seuil de décision est 0,5.",
+      "id": 12
+    },
+    {
+      "type": "stat",
+      "title": "Feedbacks et accord avec la prédiction",
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS feedbacks, avg((f.actual_label = p.predicted_label)::int) AS accord\nFROM feedbacks f JOIN predictions p ON p.id = f.prediction_id\nWHERE $__timeFilter(f.created_at)"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "description": "Accord = part des feedbacks égaux à la classe prédite (vérité terrain partielle).",
+      "id": 13
+    },
+    {
+      "type": "table",
+      "title": "Dernières erreurs API",
+      "gridPos": {
+        "x": 8,
+        "y": 26,
+        "w": 16,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT created_at, route, status_code, model_version, error\nFROM api_errors WHERE $__timeFilter(created_at)\nORDER BY created_at DESC LIMIT 20"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "id": 14
+    },
+    {
+      "type": "row",
+      "title": "Traitements — PostgreSQL",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 15
+    },
+    {
+      "type": "stat",
+      "title": "Échecs du pipeline (période)",
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS echecs FROM pipeline_runs\nWHERE state IN ('Failed', 'Crashed') AND $__timeFilter(created_at)"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background"
+      },
+      "id": 16
+    },
+    {
+      "type": "table",
+      "title": "Dernières exécutions du pipeline",
+      "gridPos": {
+        "x": 6,
+        "y": 33,
+        "w": 18,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT created_at, flow_run_name, state, batch_number, model_version, validation_status,\n       round(duration_seconds::numeric, 1) AS duration_s, message\nFROM pipeline_runs ORDER BY created_at DESC LIMIT 20"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "id": 17
+    }
+  ]
+}

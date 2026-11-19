@@ -85,3 +85,24 @@ def save_error(route: str, status_code: int, error: str, model_version: str | No
             )
     except (PersistenceError, psycopg2.Error):
         logger.warning("Erreur API non enregistrée en base : %s %s", route, status_code)
+
+
+def save_pipeline_run(
+    flow_run_id: str, flow_run_name: str, state: str, duration_seconds: float | None,
+    *, batch_number: int | None = None, model_version: str | None = None,
+    validation_status: str | None = None, message: str | None = None,
+) -> bool:
+    """Best effort : l'alerte fichier du pipeline reste la trace de secours."""
+    try:
+        with transaction() as cursor:
+            cursor.execute(
+                "INSERT INTO pipeline_runs (flow_run_id, flow_run_name, state, batch_number, model_version,"
+                " validation_status, message, duration_seconds) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+                " ON CONFLICT (flow_run_id) DO NOTHING",
+                (flow_run_id, flow_run_name, state, batch_number, model_version,
+                 validation_status, (message or "")[:2000] or None, duration_seconds),
+            )
+        return True
+    except (PersistenceError, psycopg2.Error):
+        logger.warning("Exécution du pipeline non enregistrée en base : %s %s", flow_run_name, state)
+        return False

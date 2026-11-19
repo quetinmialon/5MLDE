@@ -154,7 +154,7 @@ def fake_database(monkeypatch):
     """Base en mémoire avec les mêmes règles que PostgreSQL (clé étrangère, unicité)."""
     from bank_marketing import database
 
-    stored = {"predictions": {}, "feedbacks": {}, "errors": []}
+    stored = {"predictions": {}, "feedbacks": {}, "errors": [], "pipeline_runs": []}
 
     def save_prediction(prediction_id, model_version, features, probability, predicted_label, duration_ms):
         stored["predictions"][prediction_id] = {
@@ -172,6 +172,11 @@ def fake_database(monkeypatch):
     def save_error(route, status_code, error, model_version, duration_ms):
         stored["errors"].append({"route": route, "status_code": status_code, "error": error, "model_version": model_version})
 
+    def save_pipeline_run(flow_run_id, flow_run_name, state, duration_seconds, **details):
+        stored["pipeline_runs"].append({"flow_run_id": flow_run_id, "state": state, **details})
+        return True
+
+    monkeypatch.setattr(database, "save_pipeline_run", save_pipeline_run)
     monkeypatch.setattr(database, "check_database", lambda: None)
     monkeypatch.setattr(database, "save_prediction", save_prediction)
     monkeypatch.setattr(database, "save_feedback", save_feedback)

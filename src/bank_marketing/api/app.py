@@ -9,10 +9,12 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.concurrency import run_in_threadpool
 
 from bank_marketing import database
 from bank_marketing.api.schemas import ClientFeatures, FeedbackRequest, PredictionResponse
+from bank_marketing.metrics import API_LATENCY, API_REQUESTS, MODEL_VERSION
 from bank_marketing.preprocessing import FEATURE_COLUMNS
 from bank_marketing.registry import load_champion
 from bank_marketing.settings import load_training_config
@@ -28,12 +30,14 @@ def load_serving_model(app: FastAPI) -> None:
     model, version = load_champion(CONFIG_PATH)
     # Une seule affectation : une requête ne voit jamais un modèle avec la version d'un autre.
     app.state.serving = {"model": model, "version": version}
+    MODEL_VERSION.set(int(version))
     logger.info("Modèle champion chargé : version %s.", version)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.serving = None
+    MODEL_VERSION.set(0)
     app.state.threshold = load_training_config(CONFIG_PATH)["training"]["threshold"]
     try:
         load_serving_model(app)
@@ -64,18 +68,29 @@ async def record_error(request: Request, status_code: int, start: float) -> None
         )
 
 
+def route_label(request: Request) -> str:
+    route = request.scope.get("route")
+    return route.path if route is not None else "unmatched"
+
+
 @app.middleware("http")
-async def record_errors(request: Request, call_next):
-    """Conserver en base chaque erreur des routes métier, avec sa durée."""
+async def observe_requests(request: Request, call_next):
+    """Métriques de chaque requête ; erreurs des routes métier conservées en base."""
     start = time.perf_counter()
+    status_code = 500
     try:
         response = await call_next(request)
+        status_code = response.status_code
     except Exception as error:
         request.state.error = f"Erreur interne : {type(error).__name__}"
-        await record_error(request, 500, start)
         raise
-    if response.status_code >= 400:
-        await record_error(request, response.status_code, start)
+    finally:
+        route = route_label(request)
+        if route != "/metrics":
+            API_REQUESTS.labels(route, str(status_code)).inc()
+            API_LATENCY.labels(route).observe(time.perf_counter() - start)
+        if status_code >= 400:
+            await record_error(request, status_code, start)
     return response
 
 
@@ -90,6 +105,11 @@ async def record_validation_error(request: Request, error: RequestValidationErro
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/ready")

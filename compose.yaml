@@ -26,6 +26,7 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD:?Renseigner POSTGRES_PASSWORD dans .env}
       PREFECT_DB_PASSWORD: ${PREFECT_DB_PASSWORD:?Renseigner PREFECT_DB_PASSWORD dans .env}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Renseigner APP_DB_PASSWORD dans .env}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?Renseigner GRAFANA_DB_PASSWORD dans .env}
     entrypoint: ["/bin/sh", "/init-databases.sh"]
     volumes:
       - ./infra/postgres/init-databases.sh:/init-databases.sh:ro
@@ -93,12 +94,15 @@ services:
       PREFECT_SERVER_ANALYTICS_ENABLED: "false"
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_ENABLE_TELEMETRY: "false"
+      DATABASE_URL: postgresql://app:${APP_DB_PASSWORD:?Renseigner APP_DB_PASSWORD dans .env}@postgres:5432/bank_marketing
     command: ["python", "-m", "bank_marketing.flows", "serve"]
     volumes:
       - ./config:/app/config:ro
       - pipeline_data:/app/data
       - pipeline_models:/app/models
     depends_on:
+      db-init:
+        condition: service_completed_successfully
       prefect:
         condition: service_healthy
       mlflow:
@@ -127,8 +131,42 @@ services:
       retries: 30
       start_period: 20s
 
+  prometheus:
+    image: prom/prometheus:v3.4.2
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=7d"]
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:12.0.2
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Renseigner GRAFANA_ADMIN_PASSWORD dans .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?Renseigner GRAFANA_DB_PASSWORD dans .env}
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      prometheus:
+        condition: service_started
+
 volumes:
   postgres_data:
   mlflow_artifacts:
   pipeline_data:
   pipeline_models:
+  prometheus_data:
+  grafana_data:

@@ -1,0 +1,22 @@
+apiVersion: 1
+
+datasources:
+  # Métriques techniques de l'API (débit, latences, erreurs, CPU, mémoire).
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+  # Historique persistant (prédictions, feedbacks, erreurs, traitements), en lecture seule.
+  - name: PostgreSQL
+    uid: postgres
+    type: grafana-postgresql-datasource
+    url: postgres:5432
+    user: grafana
+    jsonData:
+      database: bank_marketing
+      sslmode: disable
+      postgresVersion: 1700
+    secureJsonData:
+      password: $GRAFANA_DB_PASSWORD

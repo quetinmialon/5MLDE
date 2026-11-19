@@ -79,7 +79,8 @@ modèle ne prédit aucune souscription sur cette partition. Cette limite doit
 from pathlib import Path
 import secrets
 with Path(".env").open("x", encoding="utf-8") as stream:
-    for key in ("POSTGRES_PASSWORD", "MLFLOW_DB_PASSWORD", "PREFECT_DB_PASSWORD", "APP_DB_PASSWORD"):
+    for key in ("POSTGRES_PASSWORD", "MLFLOW_DB_PASSWORD", "PREFECT_DB_PASSWORD", "APP_DB_PASSWORD",
+                "GRAFANA_DB_PASSWORD", "GRAFANA_ADMIN_PASSWORD"):
         stream.write(f"{key}={secrets.token_hex(32)}\n")
 '@ | python -
 ```
@@ -162,6 +163,33 @@ Limites : pas d'authentification (service exposé uniquement en local), une
 connexion PostgreSQL par requête, et les erreurs survenues pendant une panne
 de la base ne sont visibles que dans les journaux.
 
+## Supervision
+
+[Grafana](http://127.0.0.1:3000) (compte `admin`, mot de passe `GRAFANA_ADMIN_PASSWORD`
+du `.env`) → dossier *Bank Marketing*. Dashboard, sources et alertes sont
+provisionnés depuis `infra/grafana/` ; [Prometheus](http://127.0.0.1:9090) lit
+`/metrics` de l'API toutes les 5 s.
+
+| Niveau | Source | Contenu |
+|---|---|---|
+| Service | Prometheus | disponibilité, débit par route, taux de 5xx, latences p50/p95/p99, CPU et mémoire de l'API, version servie |
+| Modèle et usage | PostgreSQL | prédictions par version, distribution des probabilités, feedbacks et accord, dernières erreurs |
+| Traitements | PostgreSQL | exécutions du pipeline (`pipeline_runs`) : état, lot, version, durée, message |
+
+Alertes Grafana :
+- **Échec du pipeline** : une exécution `Failed` ou `Crashed` dans les 15 dernières minutes.
+- **API indisponible** : Prometheus ne joint plus l'API pendant 30 s.
+- **Taux d'erreurs serveur** : plus de 5 % de réponses 5xx sur une minute (ex. base arrêtée).
+
+Les métriques Prometheus n'ont que des labels bornés (route déclarée, code
+HTTP), jamais d'identifiant de requête. Grafana lit PostgreSQL avec un compte
+`grafana` en lecture seule.
+
+Limites : les alertes sont visibles dans Grafana mais aucun canal d'envoi
+(e-mail…) n'est configuré. CPU et mémoire ne couvrent que le processus de
+l'API ; pour les autres services, utiliser `docker stats`. Pendant une panne
+de PostgreSQL, les panneaux et l'alerte qui le lisent passent en erreur.
+
 ## Organisation actuelle
 
 ```text
@@ -173,7 +201,7 @@ de la base ne sont visibles que dans les journaux.
 ├── config/project.toml
 ├── compose.yaml
 ├── Dockerfile
-├── infra/postgres/
+├── infra/                         # PostgreSQL, Prometheus, Grafana
 ├── pyproject.toml
 ├── requirements.txt
 ├── README.md
