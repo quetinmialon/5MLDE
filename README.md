@@ -7,6 +7,35 @@ L'objectif est de démontrer une chaîne reproductible, traçable et exploitable
 de l'ingestion à la supervision. La complexité du modèle et la recherche du
 meilleur score ne sont pas les objectifs du projet.
 
+## Données
+
+[UCI Bank Marketing](https://archive.ics.uci.edu/dataset/222/bank+marketing)
+(Moro, Cortez et Rita, 2014), licence CC BY 4.0 : 45 211 appels d'une campagne
+de banque portugaise (2008-2010), 16 variables et la cible `y`. Le fichier
+`bank-full.csv` est téléchargé puis contrôlé (SHA-256 de l'archive et du CSV,
+contrat de données) ; il n'est pas versionné.
+
+```powershell
+.\.venv\Scripts\python.exe -m bank_marketing.ingestion   # ou --archive chemin\bank+marketing.zip
+```
+
+Les données sont historiques : l'arrivée de nouvelles données est **simulée**
+en rejouant la partition d'entraînement par lots (voir Orchestration).
+
+## Architecture
+
+```text
+UCI ──► ingestion + contrôles ──► Prefect (rejeu par lots) ──► entraînement ──► MLflow (runs, registre, alias champion)
+                                         │                                              │ promotion / retour arrière manuels
+                                         ▼                                              ▼
+                                  pipeline_runs ◄──────── PostgreSQL ◄──────── API FastAPI (prédictions, feedbacks, erreurs)
+                                         │                     │                        │ /metrics
+                                         └──────── Grafana ◄───┴──────── Prometheus ◄───┘          Locust ──► API
+```
+
+Tout tourne en local avec Docker Compose : une instance PostgreSQL avec une
+base et un compte par service (MLflow, Prefect, application, Grafana en lecture).
+
 ## Prérequis
 
 - Python **3.12**, avec `venv` et `pip`.
@@ -14,7 +43,7 @@ meilleur score ne sont pas les objectifs du projet.
 - Accès à PyPI pour l'installation et à UCI pour télécharger les données.
 
 La version mineure 3.12 est la cible actuelle. Docker Desktop et Docker Compose
-sont nécessaires pour PostgreSQL et MLflow.
+sont nécessaires pour les services (PostgreSQL, MLflow, Prefect, API, supervision).
 
 ## Installation locale
 
@@ -190,6 +219,21 @@ Limites : les alertes sont visibles dans Grafana mais aucun canal d'envoi
 l'API ; pour les autres services, utiliser `docker stats`. Pendant une panne
 de PostgreSQL, les panneaux et l'alerte qui le lisent passent en erreur.
 
+## Charge et dimensionnement
+
+```powershell
+.\.venv\Scripts\python.exe load_tests/run_campaign.py --cpus 0.5 1 2 --users 10 30 60 90 --repeats 2
+```
+
+La campagne recrée l'API pour chaque limite CPU (`API_CPUS`, vérifiée par
+`docker inspect`), lance Locust en conteneur (`load_tests/locustfile.py`) et
+échantillonne `docker stats`. Résultats : `reports/load/summary.csv` et exports
+Locust bruts. Durée : environ 35 minutes.
+
+Recommandation mesurée : **1 vCPU et 512 Mo par instance de l'API** pour environ
+10 req/s avec un p95 < 200 ms. Protocole, résultats et limites sont détaillés dans
+[docs/synthese-ops.md](docs/synthese-ops.md).
+
 ## Organisation actuelle
 
 ```text
@@ -201,10 +245,13 @@ de PostgreSQL, les panneaux et l'alerte qui le lisent passent en erreur.
 ├── config/project.toml
 ├── compose.yaml
 ├── Dockerfile
+├── docs/synthese-ops.md           # Choix, preuves, charge, dimensionnement, limites
 ├── infra/                         # PostgreSQL, Prometheus, Grafana
+├── load_tests/                    # Locust et campagne de charge
 ├── pyproject.toml
 ├── requirements.txt
 ├── README.md
+├── reports/load/                  # Résultats de charge mesurés
 ├── src/bank_marketing/             # Données, modèle, suivi, orchestration
 │   └── api/                       # API FastAPI
 └── tests/                         # Tests unitaires et commandes en intégration

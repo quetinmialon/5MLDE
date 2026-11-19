@@ -1,0 +1,5 @@
+api_cpus,applied_cpus,users,repeat,predict_rps,total_rps,predict_p50_ms,predict_p95_ms,predict_p99_ms,requests,failures,failure_rate,api_cpu_mean_pct,api_cpu_max_pct,api_mem_max_mib,postgres_cpu_mean_pct
+1,1.0,20,1,13.42,16.06,110,1000,1200,954,0,0.0,72.6,104.4,198.6,28.1
+1,1.0,20,2,13.36,16.01,96,1000,1400,953,0,0.0,75.8,103.3,198.7,27.4
+2,2.0,20,1,15.31,18.81,64,210,310,1119,0,0.0,70.4,126.6,193.5,31.8
+2,2.0,20,2,14.98,17.86,71,290,380,1063,0,0.0,75.0,134.3,194.6,31.3
