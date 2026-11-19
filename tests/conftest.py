@@ -147,3 +147,33 @@ def prefect_backend(tmp_path_factory):
     }):
         with prefect_test_harness(server_startup_timeout=90):
             yield
+
+
+@pytest.fixture
+def fake_database(monkeypatch):
+    """Base en mémoire avec les mêmes règles que PostgreSQL (clé étrangère, unicité)."""
+    from bank_marketing import database
+
+    stored = {"predictions": {}, "feedbacks": {}, "errors": []}
+
+    def save_prediction(prediction_id, model_version, features, probability, predicted_label, duration_ms):
+        stored["predictions"][prediction_id] = {
+            "model_version": model_version, "features": features,
+            "probability": probability, "predicted_label": predicted_label, "duration_ms": duration_ms,
+        }
+
+    def save_feedback(prediction_id, actual_label):
+        if prediction_id not in stored["predictions"]:
+            raise database.UnknownPredictionError("Prédiction inconnue.")
+        if prediction_id in stored["feedbacks"]:
+            raise database.DuplicateFeedbackError("Feedback déjà enregistré.")
+        stored["feedbacks"][prediction_id] = actual_label
+
+    def save_error(route, status_code, error, model_version, duration_ms):
+        stored["errors"].append({"route": route, "status_code": status_code, "error": error, "model_version": model_version})
+
+    monkeypatch.setattr(database, "check_database", lambda: None)
+    monkeypatch.setattr(database, "save_prediction", save_prediction)
+    monkeypatch.setattr(database, "save_feedback", save_feedback)
+    monkeypatch.setattr(database, "save_error", save_error)
+    return stored

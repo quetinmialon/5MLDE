@@ -17,7 +17,7 @@ services:
       timeout: 5s
       retries: 20
 
-  prefect-init:
+  db-init:
     image: postgres:17.12-bookworm
     environment:
       PGHOST: postgres
@@ -25,9 +25,11 @@ services:
       PGDATABASE: postgres
       PGPASSWORD: ${POSTGRES_PASSWORD:?Renseigner POSTGRES_PASSWORD dans .env}
       PREFECT_DB_PASSWORD: ${PREFECT_DB_PASSWORD:?Renseigner PREFECT_DB_PASSWORD dans .env}
-    entrypoint: ["/bin/sh", "/init-prefect.sh"]
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Renseigner APP_DB_PASSWORD dans .env}
+    entrypoint: ["/bin/sh", "/init-databases.sh"]
     volumes:
-      - ./infra/postgres/init-prefect.sh:/init-prefect.sh:ro
+      - ./infra/postgres/init-databases.sh:/init-databases.sh:ro
+      - ./infra/postgres/app-schema.sql:/app-schema.sql:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,7 +77,7 @@ services:
     ports:
       - "127.0.0.1:4200:4200"
     depends_on:
-      prefect-init:
+      db-init:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4200/api/health', timeout=3)"]
@@ -101,6 +103,29 @@ services:
         condition: service_healthy
       mlflow:
         condition: service_healthy
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://app:${APP_DB_PASSWORD:?Renseigner APP_DB_PASSWORD dans .env}@postgres:5432/bank_marketing
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_ENABLE_TELEMETRY: "false"
+    command: ["uvicorn", "bank_marketing.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      mlflow:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
 
 volumes:
   postgres_data:
