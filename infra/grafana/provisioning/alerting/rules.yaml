@@ -1,0 +1,89 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: bank-marketing
+    folder: Bank Marketing
+    interval: 30s
+    rules:
+      - uid: pipeline-failed
+        title: Échec du pipeline
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: postgres
+            model:
+              refId: A
+              format: table
+              rawQuery: true
+              editorMode: code
+              rawSql: >-
+                SELECT count(*)::float AS failed_runs FROM pipeline_runs
+                WHERE state IN ('Failed', 'Crashed') AND created_at > now() - interval '15 minutes'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels: { severity: critical }
+        annotations:
+          summary: Un traitement a échoué dans les 15 dernières minutes ; le champion n'a pas changé.
+
+      - uid: api-down
+        title: API indisponible
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 60, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, expr: 'up{job="api"}', instant: true }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 30s
+        labels: { severity: critical }
+        annotations:
+          summary: Prometheus ne parvient plus à joindre l'API.
+
+      - uid: api-5xx-rate
+        title: Taux d'erreurs serveur de l'API
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              # Sans trafic, le dénominateur est vide : pas de donnée, donc pas d'alerte.
+              expr: >-
+                (sum(rate(api_requests_total{status=~"5.."}[1m])) or vector(0))
+                / (sum(rate(api_requests_total[1m])) > 0)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.05] }
+        noDataState: OK
+        execErrState: Error
+        for: 30s
+        labels: { severity: warning }
+        annotations:
+          summary: Plus de 5 % de réponses 5xx sur la dernière minute (base ou modèle indisponible).

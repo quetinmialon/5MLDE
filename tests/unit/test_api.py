@@ -162,3 +162,31 @@ def test_unexpected_model_error_is_traced_as_500(api):
     assert stored["errors"][-1] == {
         "route": "/predict", "status_code": 500, "error": "Erreur interne : RuntimeError", "model_version": "3",
     }
+
+
+def metric_value(client, line_start):
+    lines = [line for line in client.get("/metrics").text.splitlines() if line.startswith(line_start)]
+    return float(lines[0].rsplit(" ", 1)[1]) if lines else 0.0
+
+
+def test_metrics_count_requests_by_declared_route_and_status(api):
+    start, _, _ = api
+    with start() as client:
+        before = metric_value(client, 'api_requests_total{route="/predict",status="200"}')
+        client.post("/predict", json=CLIENT)
+        client.post("/predict", json={**CLIENT, "day": 0})
+        client.get("/does-not-exist")
+        assert metric_value(client, 'api_requests_total{route="/predict",status="200"}') == before + 1
+        assert metric_value(client, 'api_requests_total{route="/predict",status="422"}') >= 1
+        assert metric_value(client, 'api_requests_total{route="unmatched",status="404"}') >= 1
+        assert metric_value(client, 'api_request_duration_seconds_count{route="/predict"}') >= 2
+        assert 'route="/metrics"' not in client.get("/metrics").text
+
+
+def test_metrics_expose_served_model_version(api):
+    start, serving, _ = api
+    with start() as client:
+        assert metric_value(client, "api_model_version") == 3
+        serving["version"] = "4"
+        client.post("/model/refresh")
+        assert metric_value(client, "api_model_version") == 4

@@ -28,3 +28,20 @@ CREATE TABLE IF NOT EXISTS api_errors (
 
 CREATE INDEX IF NOT EXISTS predictions_created_at ON predictions (created_at);
 CREATE INDEX IF NOT EXISTS api_errors_created_at ON api_errors (created_at);
+
+-- Résumé de chaque exécution du pipeline Prefect, pour le dashboard et l'alerte.
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    flow_run_id UUID PRIMARY KEY,
+    flow_run_name TEXT NOT NULL,
+    state TEXT NOT NULL,
+    batch_number INTEGER,
+    model_version TEXT,
+    validation_status TEXT,
+    message TEXT,
+    duration_seconds DOUBLE PRECISION,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Grafana lit les traces sans pouvoir les modifier.
+GRANT USAGE ON SCHEMA public TO grafana;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO grafana;

@@ -14,7 +14,7 @@ from bank_marketing.tracking import track_training
 from bank_marketing.validation import DataValidationError
 
 
-def test_flow_replays_without_duplicate_version(prefect_backend, replay_setup):
+def test_flow_replays_without_duplicate_version(prefect_backend, replay_setup, fake_database):
     config, _, _, client, _ = replay_setup
     first = bank_marketing_pipeline(str(config))
     assert first["status"] == "completed"
@@ -28,9 +28,12 @@ def test_flow_replays_without_duplicate_version(prefect_backend, replay_setup):
     second_run = client.get_run(third["receipt"]["run_id"])
     assert first_run.data.tags["validation_digest"] == second_run.data.tags["validation_digest"]
     assert first_run.data.tags["prefect_flow_run_id"]
+    runs = fake_database["pipeline_runs"]
+    assert [run["state"] for run in runs] == ["Completed", "Skipped", "Completed"]
+    assert runs[0]["batch_number"] == 1 and runs[0]["model_version"] == first["receipt"]["model_version"]
 
 
-def test_failed_batch_alert_is_persistent_and_champion_is_preserved(prefect_backend, replay_setup):
+def test_failed_batch_alert_is_persistent_and_champion_is_preserved(prefect_backend, replay_setup, fake_database):
     config, source, _, client, _ = replay_setup
     initial = track_training(config)
     change_champion(config, version=initial["model_version"], reason="Modèle initial")
@@ -49,6 +52,7 @@ def test_failed_batch_alert_is_persistent_and_champion_is_preserved(prefect_back
             artifact_filter=ArtifactFilter(key=ArtifactFilterKey(any_=["bank-marketing-alerts"]))
         )
     assert any(alert["flow_run_id"] in item.data for item in artifacts)
+    assert fake_database["pipeline_runs"] == [{"flow_run_id": alert["flow_run_id"], "state": "Failed", "message": alert["message"]}]
 
 
 def test_completed_mlflow_batch_recovers_after_checkpoint_loss(prefect_backend, replay_setup, monkeypatch):

@@ -1,10 +1,11 @@
-"""Pipeline Prefect de rejeu, avec retries ciblés et alerte locale persistante."""
+"""Pipeline Prefect de rejeu, avec retries ciblés, alerte locale et résumé en base."""
 
 import argparse
 import hashlib
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -16,6 +17,7 @@ from prefect.cache_policies import NO_CACHE
 from prefect.runtime import flow_run as runtime_flow_run
 from prefect.types.entrypoint import EntrypointType
 
+from bank_marketing import database
 from bank_marketing.ingestion import ingest_dataset
 from bank_marketing.replay import commit_batch, next_batch, prepare_replay, write_json_atomic
 from bank_marketing.settings import load_orchestration_config, load_tracking_config
@@ -48,6 +50,8 @@ def alert_failure(flow, flow_run, state) -> None:
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     write_json_atomic(replay_dir / "alerts" / f"{flow_run.id}.json", alert)
+    duration = (state.timestamp - flow_run.start_time).total_seconds() if flow_run.start_time else None
+    database.save_pipeline_run(str(flow_run.id), flow_run.name, state.name, duration, message=alert["message"])
     try:
         create_markdown_artifact(
             key="bank-marketing-alerts", description=f"Échec du pipeline {flow_run.name}",
@@ -106,11 +110,18 @@ def commit_batch_task(config_path: str, batch: dict, receipt: dict) -> None:
     commit_batch(config_path, batch, receipt)
 
 
+def record_run(state: str, started: float, **details) -> None:
+    database.save_pipeline_run(
+        str(runtime_flow_run.id), runtime_flow_run.name, state, time.perf_counter() - started, **details,
+    )
+
+
 @flow(name="bank-marketing-pipeline", retries=0, on_failure=[alert_failure], on_crashed=[alert_failure])
 def bank_marketing_pipeline(
     config_path: str = "config/project.toml", archive_path: str | None = None,
     batch_number: int | None = None,
 ) -> dict:
+    started = time.perf_counter()
     config_path = str(Path(config_path).resolve())
     config = load_orchestration_config(config_path)
     settings = config["orchestration"]
@@ -126,6 +137,7 @@ def bank_marketing_pipeline(
             batch = select_batch(config_path, manifest, batch_number)
             if batch is None:
                 get_run_logger().info("Aucun nouveau lot : aucune version supplémentaire créée.")
+                record_run("Skipped", started, message="Aucun nouveau lot.")
                 return {"status": "skipped", "reason": "no_new_batch"}
             receipt = train_candidate(config_path, batch, str(runtime_flow_run.id))
             create_markdown_artifact(
@@ -135,9 +147,14 @@ def bank_marketing_pipeline(
                           f"Validation : **{receipt['validation_status']}**. Références de validation et de test fixes."),
             )
             commit_batch_task(config_path, batch, receipt)
+            record_run(
+                "Completed", started, batch_number=batch["number"],
+                model_version=receipt["model_version"], validation_status=receipt["validation_status"],
+            )
             return {"status": "completed", "batch": batch, "receipt": receipt}
     except Timeout:
         get_run_logger().info("Une exécution utilise déjà ce rejeu ; aucune modification.")
+        record_run("Skipped", started, message="Exécution déjà en cours.")
         return {"status": "skipped", "reason": "already_running"}
 
 
