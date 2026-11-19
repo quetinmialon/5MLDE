@@ -77,6 +77,8 @@ services:
       PREFECT_SERVER_ANALYTICS_ENABLED: "false"
       PREFECT_UI_API_URL: http://127.0.0.1:4200/api
       PREFECT_SERVER_DOCKET_URL: memory://
+      # Processus non-root : l'interface web doit être copiée dans un dossier accessible en écriture.
+      PREFECT_SERVER_UI_STATIC_DIRECTORY: /home/appuser/prefect-ui
     command: ["prefect", "server", "start", "--host", "0.0.0.0", "--port", "4200"]
     ports:
       - "127.0.0.1:4200:4200"
