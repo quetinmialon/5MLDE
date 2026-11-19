@@ -3,6 +3,7 @@ name: bank-marketing
 services:
   postgres:
     image: postgres:17.12-bookworm
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DB: postgres
@@ -37,6 +38,7 @@ services:
 
   mlflow:
     build: .
+    restart: unless-stopped
     environment:
       MLFLOW_BACKEND_STORE_URI: postgresql+psycopg2://mlflow:${MLFLOW_DB_PASSWORD:?Renseigner MLFLOW_DB_PASSWORD dans .env}@postgres:5432/mlflow
       MLFLOW_ENABLE_TELEMETRY: "false"
@@ -69,6 +71,7 @@ services:
 
   prefect:
     build: .
+    restart: unless-stopped
     environment:
       PREFECT_SERVER_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:${PREFECT_DB_PASSWORD:?Renseigner PREFECT_DB_PASSWORD dans .env}@postgres:5432/prefect
       PREFECT_SERVER_ANALYTICS_ENABLED: "false"
@@ -89,6 +92,7 @@ services:
 
   pipeline-runner:
     build: .
+    restart: unless-stopped
     environment:
       PREFECT_API_URL: http://prefect:4200/api
       PREFECT_SERVER_ANALYTICS_ENABLED: "false"
@@ -110,11 +114,15 @@ services:
 
   api:
     build: .
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://app:${APP_DB_PASSWORD:?Renseigner APP_DB_PASSWORD dans .env}@postgres:5432/bank_marketing
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_ENABLE_TELEMETRY: "false"
     command: ["uvicorn", "bank_marketing.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    # Limites variables pour comparer des configurations en test de charge.
+    cpus: ${API_CPUS:-1}
+    mem_limit: ${API_MEMORY:-1g}
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     volumes:
@@ -133,6 +141,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v3.4.2
+    restart: unless-stopped
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=7d"]
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -144,6 +153,7 @@ services:
 
   grafana:
     image: grafana/grafana:12.0.2
+    restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Renseigner GRAFANA_ADMIN_PASSWORD dans .env}
@@ -162,6 +172,18 @@ services:
         condition: service_completed_successfully
       prometheus:
         condition: service_started
+
+  # Lancé à la demande : docker compose --profile load run --rm locust ...
+  locust:
+    image: locustio/locust:2.37.10
+    profiles: ["load"]
+    cpus: 2
+    working_dir: /mnt/load
+    volumes:
+      - ./load_tests:/mnt/load
+      - ./reports/load:/mnt/reports
+    depends_on:
+      - api
 
 volumes:
   postgres_data:
